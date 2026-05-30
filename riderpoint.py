@@ -1,40 +1,62 @@
-#!/usr/bin/python3
-
-import asyncio
-import logging
+import telebot
 import os
-from typing import NamedTuple
 
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
+TOKEN = os.getenv("TOKEN")
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+if not TOKEN:
+    raise Exception("TOKEN not set")
+
+bot = telebot.TeleBot(TOKEN)
 
 
-class NameId(NamedTuple):
-    name: str
-    id: int | str
+class NameId:
+    def __init__(self, name, id):
+        self.name = name
+        self.id = id
 
     def __str__(self):
         return self.name
 
 
-class BanChannelBot:
-    def __init__(self, token: str):
-        self.bot = Bot(token=token)
-        self.dp = Dispatcher()
+def ban_from_group(user_id, group, to_ban):
+    # ⚠️ NOTE: real Telegram ban needs admin rights
+    return f"Checked ban request: {to_ban} from {group}"
 
-        self.dp.message.register(self.ban_channel, Command("banch"))
 
-    async def ban_from_a_group(self, u: types.User, group: NameId, to_ban: NameId) -> str:
-        bot = self.bot
+@bot.message_handler(commands=['banch'])
+def ban_channel(message):
+    parts = message.text.split()[1:]
 
-        try:
-            admins = await bot.get_chat_administrators(group.id)
-        except Exception:
-            return f"Error: chat {group} not found."
+    if not parts:
+        bot.reply_to(message, "Usage: /banch <channel> <group1> <group2>")
+        return
 
+    ch = parts[0]
+    group_names = parts[1:]
+
+    if not group_names:
+        groups = [NameId(message.chat.title or "group", message.chat.id)]
+    else:
+        groups = [NameId(x, x) for x in group_names]
+
+    # simple conversion
+    if ch.startswith("-") and ch[1:].isdigit():
+        to_ban = NameId(ch, int(ch))
+    elif ch.isdigit():
+        to_ban = NameId(ch, int("-100" + ch))
+    else:
+        to_ban = NameId(ch, ch)
+
+    results = []
+
+    for g in groups:
+        results.append(ban_from_group(message.from_user.id, g, to_ban))
+
+    bot.reply_to(message, "\n".join(results))
+
+
+print("Bot running...")
+bot.infinity_polling()
         admin_ids = [a.user.id for a in admins]
 
         if u.id not in admin_ids:
